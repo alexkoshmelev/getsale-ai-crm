@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +12,9 @@ async function bootstrap() {
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';
   app.setGlobalPrefix(apiPrefix);
+
+  // WebSocket adapter
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   // CORS
   app.enableCors({
@@ -41,6 +45,7 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`🚀 API is running on: http://localhost:${port}/${apiPrefix}`);
   console.log(`📚 Swagger docs: http://localhost:${port}/${apiPrefix}/docs`);
+  console.log(`🔌 WebSocket: ws://localhost:${port}/ws`);
 }
 
 bootstrap();

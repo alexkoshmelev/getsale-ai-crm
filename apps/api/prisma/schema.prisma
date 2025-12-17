@@ -33,6 +33,7 @@ model Organization {
   subscriptions Subscription[]
   events        Event[]
   auditLogs     AuditLog[]
+  notifications Notification[]
 
   @@map("organizations")
 }
@@ -51,6 +52,7 @@ model User {
   organizationMembers OrganizationMember[]
   oauthConnections    OAuthConnection[]
   auditLogs           AuditLog[]
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -483,5 +485,24 @@ model AuditLog {
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+model Notification {
+  id            String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  userId        String   @map("user_id")
+  type          String
+  title         String
+  message       String   @db.Text
+  link          String?
+  metadata      Json     @default("{}")
+  isRead        Boolean  @default(false) @map("is_read")
+  readAt        DateTime? @map("read_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }
 

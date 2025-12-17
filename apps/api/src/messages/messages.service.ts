@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { EventsService, EventType } from '../events/events.service';
+import { WebSocketGateway } from '../websocket/websocket.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
 @Injectable()
@@ -8,6 +11,9 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     private telegramService: TelegramService,
+    private eventsService: EventsService,
+    private websocketGateway: WebSocketGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(organizationId: string, userId: string, createDto: CreateMessageDto) {
@@ -55,6 +61,18 @@ export class MessagesService {
         console.error('Failed to send Telegram message:', error);
       }
     }
+
+    // Publish event
+    await this.eventsService.publish(EventType.MESSAGE_SENT, {
+      organizationId,
+      entityType: 'message',
+      entityId: message.id,
+      userId,
+      data: { chatId: chat.id, content: createDto.content },
+    });
+
+    // Broadcast via WebSocket
+    this.websocketGateway.broadcastMessage(chat.id, message);
 
     return message;
   }

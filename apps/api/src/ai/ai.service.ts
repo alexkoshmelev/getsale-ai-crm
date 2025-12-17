@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { EventsService, EventType } from '../events/events.service';
 import axios from 'axios';
 
 interface AIDraftRequest {
@@ -20,6 +21,7 @@ export class AIService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private eventsService: EventsService,
   ) {
     this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY') || '';
     this.openaiModel = this.configService.get<string>('OPENAI_MODEL') || 'gpt-4';
@@ -108,6 +110,14 @@ Generate a reply draft:`;
         tokens: response.data.usage?.total_tokens || 0,
       });
 
+      // Publish event
+      await this.eventsService.publish(EventType.AI_DRAFT_GENERATED, {
+        organizationId: request.organizationId,
+        entityType: 'chat',
+        entityId: request.chatId,
+        data: { chatId: request.chatId, draft },
+      });
+
       return draft;
     } catch (error: any) {
       this.logger.error('Failed to generate AI draft', error);
@@ -154,6 +164,7 @@ Generate a reply draft:`;
     const systemPrompt = agent.promptTemplate.replace('{{memory}}', memoryContext || 'No previous context');
 
     try {
+      const startTime = Date.now();
       const response = await axios.post(
         this.openaiUrl,
         {
@@ -172,11 +183,12 @@ Generate a reply draft:`;
           },
         },
       );
+      const executionTimeMs = Date.now() - startTime;
 
       const result = response.data.choices[0]?.message?.content;
 
       // Log execution
-      await this.prisma.agentExecution.create({
+      const execution = await this.prisma.agentExecution.create({
         data: {
           agentId,
           organizationId,
@@ -185,7 +197,7 @@ Generate a reply draft:`;
           outputData: { response: result },
           status: 'success',
           tokensUsed: response.data.usage?.total_tokens || 0,
-          executionTimeMs: response.data.usage?.total_tokens ? Date.now() : 0,
+          executionTimeMs,
         },
       });
 
@@ -194,6 +206,15 @@ Generate a reply draft:`;
         agentId,
         agentType: agent.type,
         tokens: response.data.usage?.total_tokens || 0,
+      });
+
+      // Publish event
+      await this.eventsService.publish(EventType.AI_AGENT_TRIGGERED, {
+        organizationId,
+        entityType: 'ai_agent',
+        entityId: agentId,
+        agentId,
+        data: { agentId, agentType: agent.type, executionId: execution.id, input, output: result },
       });
 
       return JSON.parse(result || '{}');

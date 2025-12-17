@@ -16,6 +16,10 @@ import { AIModule } from './ai/ai.module';
 import { AgentsModule } from './agents/agents.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { EmailModule } from './email/email.module';
+import { EventsModule } from './events/events.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
+import { WebSocketModule } from './websocket/websocket.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 
@@ -31,6 +35,12 @@ import { RedisModule } from './common/redis/redis.module';
         limit: 100,
       },
     ]),
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+      },
+    }),
     PrismaModule,
     RedisModule,
     AuthModule,
@@ -48,6 +58,10 @@ import { RedisModule } from './common/redis/redis.module';
     AgentsModule,
     AnalyticsModule,
     EmailModule,
+    EventsModule,
+    CampaignsModule,
+    WebSocketModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

@@ -1,11 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { EventsService, EventType } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { UpdateDealDto } from './dto/update-deal.dto';
 
 @Injectable()
 export class DealsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventsService: EventsService,
+    private notificationsService: NotificationsService,
+  ) {}
 
   async create(organizationId: string, createDto: CreateDealDto) {
     // Verify pipeline belongs to organization
@@ -104,7 +110,7 @@ export class DealsService {
     // Verify stage belongs to same pipeline
     const deal = await this.prisma.deal.findUnique({
       where: { id },
-      include: { pipeline: true },
+      include: { pipeline: true, stage: true },
     });
 
     const stage = await this.prisma.pipelineStage.findFirst({
@@ -118,7 +124,8 @@ export class DealsService {
       throw new NotFoundException('Stage not found in this pipeline');
     }
 
-    return this.prisma.deal.update({
+    const oldStage = deal.stage;
+    const updatedDeal = await this.prisma.deal.update({
       where: { id },
       data: { stageId },
       include: {
@@ -128,6 +135,35 @@ export class DealsService {
         pipeline: true,
       },
     });
+
+    // Publish event
+    await this.eventsService.publish(EventType.DEAL_STAGE_CHANGED, {
+      organizationId,
+      entityType: 'deal',
+      entityId: updatedDeal.id,
+      data: {
+        dealId: updatedDeal.id,
+        dealName: updatedDeal.name,
+        oldStage: oldStage?.name,
+        newStage: updatedDeal.stage?.name,
+      },
+    });
+
+    // Send notifications to organization members
+    const members = await this.prisma.organizationMember.findMany({
+      where: { organizationId },
+      select: { userId: true },
+    });
+
+    for (const member of members) {
+      await this.notificationsService.handleDealStageChanged(organizationId, member.userId, {
+        dealId: updatedDeal.id,
+        dealName: updatedDeal.name,
+        newStage: updatedDeal.stage?.name || 'Unknown',
+      });
+    }
+
+    return updatedDeal;
   }
 
   async remove(id: string, organizationId: string) {

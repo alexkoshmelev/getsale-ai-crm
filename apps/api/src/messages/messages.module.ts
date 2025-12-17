@@ -3,9 +3,18 @@ import { MessagesService } from './messages.service';
 import { MessagesController } from './messages.controller';
 import { TelegramModule } from '../telegram/telegram.module';
 import { AIModule } from '../ai/ai.module';
+import { EventsModule } from '../events/events.module';
+import { WebSocketModule } from '../websocket/websocket.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TelegramModule, AIModule],
+  imports: [
+    TelegramModule,
+    AIModule,
+    EventsModule,
+    WebSocketModule,
+    NotificationsModule,
+  ],
   controllers: [MessagesController],
   providers: [MessagesService],
   exports: [MessagesService],

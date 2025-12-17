@@ -52,6 +52,12 @@ export default function DashboardLayout({
                 >
                   Pipelines
                 </Link>
+                <Link
+                  href="/dashboard/chats"
+                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Chats
+                </Link>
               </div>
             </div>
             <div className="flex items-center space-x-4">

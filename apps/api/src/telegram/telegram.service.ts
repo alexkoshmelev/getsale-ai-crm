@@ -1,6 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { EventsService, EventType } from '../events/events.service';
+import { WebSocketGateway } from '../websocket/websocket.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import axios from 'axios';
 
 interface TelegramMessage {
@@ -31,6 +34,8 @@ export class TelegramService implements OnModuleInit {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    @Inject(forwardRef(() => NotificationsService))
+    private notificationsService: NotificationsService,
   ) {
     this.botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN') || '';
     this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
@@ -340,6 +345,45 @@ export class TelegramService implements OnModuleInit {
           isUnread: true,
         },
       });
+
+      // Publish event
+      await this.eventsService.publish(EventType.MESSAGE_RECEIVED, {
+        organizationId: contact.organizationId,
+        entityType: 'message',
+        entityId: message.id.toString(),
+        data: {
+          chatId: chat.id,
+          contactId: contact.id,
+          content: text,
+        },
+      });
+
+      // Broadcast via WebSocket
+      this.websocketGateway.broadcastMessage(chat.id, {
+        id: message.id.toString(),
+        chatId: chat.id,
+        content: text,
+        isIncoming: true,
+        createdAt: new Date(),
+      });
+
+      // Send notification to organization members
+      const members = await this.prisma.organizationMember.findMany({
+        where: { organizationId: contact.organizationId },
+        select: { userId: true },
+      });
+
+      for (const member of members) {
+        await this.notificationsService.handleMessageReceived(
+          contact.organizationId,
+          member.userId,
+          {
+            chatId: chat.id,
+            contactId: contact.id,
+            contactName: contact.firstName || contact.email || 'Contact',
+          },
+        );
+      }
 
       this.logger.log(`Message saved: ${message.message_id}`);
     } catch (error) {
