@@ -10,6 +10,8 @@ import { PipelinesModule } from './pipelines/pipelines.module';
 import { DealsModule } from './deals/deals.module';
 import { ChatsModule } from './chats/chats.module';
 import { MessagesModule } from './messages/messages.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { BillingModule } from './billing/billing.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 
@@ -36,6 +38,8 @@ import { RedisModule } from './common/redis/redis.module';
     DealsModule,
     ChatsModule,
     MessagesModule,
+    TelegramModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
 @Injectable()
 export class MessagesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private telegramService: TelegramService,
+  ) {}
 
   async create(organizationId: string, userId: string, createDto: CreateMessageDto) {
     // Verify chat belongs to organization
@@ -41,6 +45,16 @@ export class MessagesService {
       where: { id: chat.id },
       data: { lastMessageAt: new Date() },
     });
+
+    // Send via Telegram if channel is telegram
+    if (chat.channel === 'telegram' && chat.channelThreadId) {
+      try {
+        await this.telegramService.sendMessage(chat.channelThreadId, createDto.content);
+      } catch (error) {
+        // Log error but don't fail the request
+        console.error('Failed to send Telegram message:', error);
+      }
+    }
 
     return message;
   }
