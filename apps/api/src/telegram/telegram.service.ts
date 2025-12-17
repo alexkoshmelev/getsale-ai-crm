@@ -61,8 +61,219 @@ export class TelegramService implements OnModuleInit {
 
   async handleWebhook(update: any) {
     if (update.message) {
-      await this.handleMessage(update.message);
+      // Check if it's a command
+      if (update.message.text?.startsWith('/')) {
+        await this.handleCommand(update.message);
+      } else {
+        await this.handleMessage(update.message);
+      }
+    } else if (update.callback_query) {
+      await this.handleCallbackQuery(update.callback_query);
     }
+  }
+
+  private async handleCommand(message: TelegramMessage) {
+    const command = message.text?.split(' ')[0];
+    const chatId = message.chat.id;
+
+    switch (command) {
+      case '/start':
+        await this.sendMessage(
+          chatId.toString(),
+          '👋 Welcome to GetSale AI CRM!\n\nI can help you manage your contacts and conversations.\n\nUse /help to see available commands.',
+        );
+        break;
+      case '/help':
+        await this.sendMessage(
+          chatId.toString(),
+          '📋 Available commands:\n\n' +
+            '/start - Start the bot\n' +
+            '/help - Show this help message\n' +
+            '/status - Check your connection status\n' +
+            '/contacts - View your contacts\n' +
+            '/settings - Manage settings',
+        );
+        break;
+      case '/status':
+        await this.handleStatusCommand(message);
+        break;
+      case '/contacts':
+        await this.handleContactsCommand(message);
+        break;
+      case '/settings':
+        await this.handleSettingsCommand(message);
+        break;
+      default:
+        await this.sendMessage(chatId.toString(), '❓ Unknown command. Use /help for available commands.');
+    }
+  }
+
+  private async handleCallbackQuery(callbackQuery: any) {
+    // Check if message exists (it may be absent for inline button callbacks)
+    if (!callbackQuery.message) {
+      this.logger.warn('Callback query missing message property', { callbackQueryId: callbackQuery.id });
+      // Answer callback query even if message is missing
+      try {
+        await axios.post(`${this.apiUrl}/answerCallbackQuery`, {
+          callback_query_id: callbackQuery.id,
+          text: 'This action requires a message context.',
+        });
+      } catch (error) {
+        this.logger.error('Failed to answer callback query', error);
+      }
+      return;
+    }
+
+    const chatId = callbackQuery.message.chat.id;
+    const data = callbackQuery.data;
+
+    // Handle button clicks
+    if (data === 'refresh_contacts') {
+      // Ensure callbackQuery.from exists before creating message object
+      if (!callbackQuery.from) {
+        this.logger.warn('Callback query missing from property', { callbackQueryId: callbackQuery.id });
+        return;
+      }
+      await this.handleContactsCommand({ chat: { id: chatId }, from: callbackQuery.from } as any);
+    }
+
+    // Answer callback query
+    try {
+      await axios.post(`${this.apiUrl}/answerCallbackQuery`, {
+        callback_query_id: callbackQuery.id,
+      });
+    } catch (error) {
+      this.logger.error('Failed to answer callback query', error);
+    }
+  }
+
+  private async handleStatusCommand(message: TelegramMessage) {
+    const chatId = message.chat.id;
+
+    // Find contact
+    const contact = await this.prisma.contact.findFirst({
+      where: {
+        telegramChatId: BigInt(chatId),
+      },
+      include: {
+        organization: true,
+        company: true,
+      },
+    });
+
+    if (!contact) {
+      await this.sendMessage(
+        chatId.toString(),
+        '⚠️ You are not linked to any contact in the CRM. Please contact your administrator.',
+      );
+      return;
+    }
+
+    const statusMessage =
+      `✅ Connected to GetSale AI CRM\n\n` +
+      `${contact.organization ? `📧 Organization: ${contact.organization.name}\n` : ''}` +
+      `${contact.company ? `🏢 Company: ${contact.company.name}\n` : ''}` +
+      `👤 Contact: ${contact.firstName || contact.email || 'Unknown'}\n` +
+      `📅 Linked: ${new Date(contact.createdAt).toLocaleDateString()}`;
+
+    await this.sendMessage(chatId.toString(), statusMessage);
+  }
+
+  private async handleContactsCommand(message: TelegramMessage) {
+    const chatId = message.chat.id;
+
+    // Find contact and organization
+    const contact = await this.prisma.contact.findFirst({
+      where: {
+        telegramChatId: BigInt(chatId),
+      },
+    });
+
+    if (!contact) {
+      await this.sendMessage(
+        chatId.toString(),
+        '⚠️ You are not linked to any contact in the CRM.',
+      );
+      return;
+    }
+
+    // Get recent contacts from same organization
+    const contacts = await this.prisma.contact.findMany({
+      where: {
+        organizationId: contact.organizationId,
+      },
+      take: 5,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        company: true,
+      },
+    });
+
+    if (contacts.length === 0) {
+      await this.sendMessage(chatId.toString(), '📭 No contacts found in your organization.');
+      return;
+    }
+
+    let messageText = '📇 Recent Contacts:\n\n';
+    contacts.forEach((c, index) => {
+      const name = c.firstName || c.lastName || c.email || 'Unnamed';
+      messageText += `${index + 1}. ${name}\n`;
+      if (c.company) {
+        messageText += `   🏢 ${c.company.name}\n`;
+      }
+      if (c.email) {
+        messageText += `   📧 ${c.email}\n`;
+      }
+      messageText += '\n';
+    });
+
+    // Add inline keyboard
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '🔄 Refresh', callback_data: 'refresh_contacts' }],
+      ],
+    };
+
+    try {
+      await axios.post(`${this.apiUrl}/sendMessage`, {
+        chat_id: chatId,
+        text: messageText,
+        reply_markup: keyboard,
+      });
+    } catch (error) {
+      this.logger.error('Failed to send contacts', error);
+    }
+  }
+
+  private async handleSettingsCommand(message: TelegramMessage) {
+    const chatId = message.chat.id;
+
+    // Find contact
+    const contact = await this.prisma.contact.findFirst({
+      where: {
+        telegramChatId: BigInt(chatId),
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!contact) {
+      await this.sendMessage(
+        chatId.toString(),
+        '⚠️ You are not linked to any contact in the CRM.',
+      );
+      return;
+    }
+
+    const settingsMessage =
+      '⚙️ Settings\n\n' +
+      `📧 Email notifications: Enabled\n` +
+      `🔔 Message alerts: Enabled\n` +
+      `🌐 Language: English\n\n` +
+      `To change settings, please use the web dashboard at ${this.configService.get('FRONTEND_URL') || 'https://app.getsale.ai'}`;
+
+    await this.sendMessage(chatId.toString(), settingsMessage);
   }
 
   private async handleMessage(message: TelegramMessage) {
@@ -212,4 +423,3 @@ export class TelegramService implements OnModuleInit {
     return message;
   }
 }
-

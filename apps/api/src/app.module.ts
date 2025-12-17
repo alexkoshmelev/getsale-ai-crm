@@ -12,6 +12,10 @@ import { ChatsModule } from './chats/chats.module';
 import { MessagesModule } from './messages/messages.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { BillingModule } from './billing/billing.module';
+import { AIModule } from './ai/ai.module';
+import { AgentsModule } from './agents/agents.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { EmailModule } from './email/email.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 
@@ -40,6 +44,10 @@ import { RedisModule } from './common/redis/redis.module';
     MessagesModule,
     TelegramModule,
     BillingModule,
+    AIModule,
+    AgentsModule,
+    AnalyticsModule,
+    EmailModule,
   ],
 })
 export class AppModule {}
