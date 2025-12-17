@@ -1,0 +1,30 @@
+{
+  "name": "getsale-ai-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-first CRM SaaS for B2B / cold outreach / BizDev teams",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm --recursive build",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive test",
+    "clean": "pnpm --recursive clean",
+    "migrate": "pnpm --filter api migrate",
+    "migrate:dev": "pnpm --filter api migrate:dev",
+    "db:seed": "pnpm --filter api db:seed",
+    "db:studio": "pnpm --filter api db:studio"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

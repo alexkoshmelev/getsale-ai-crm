@@ -69,6 +69,8 @@ Frontend (Next.js) → API Gateway (NestJS) → Core Services
 
 ## 🚀 Quick Start
 
+**👉 See [QUICKSTART.md](./QUICKSTART.md) for a 5-minute setup guide!**
+
 ### Prerequisites
 
 - Node.js 18+
@@ -87,21 +89,21 @@ cd getsale-ai-crm
 # Install dependencies
 pnpm install
 
-# Setup environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Start services
+# Start Docker services
 docker-compose up -d
 
-# Run migrations
-pnpm run migrate
+# Setup database
+cd apps/api
+cp .env.example .env
+# Edit .env with your configuration
+pnpm prisma:generate
+pnpm migrate:dev
 
-# Start development
-pnpm run dev
+# Start development (from root)
+pnpm dev
 ```
 
-See [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) for detailed setup instructions.
+See [SETUP.md](./SETUP.md) for detailed setup instructions.
 
 ## 📋 MVP Roadmap
 
@@ -253,6 +255,25 @@ For questions or contributions, please refer to the documentation or open an iss
 
 ---
 
-**Status**: Planning Phase  
+**Status**: MVP Phase 1 Complete ✅  
 **Last Updated**: 2025-12-17
 
+## 🎉 Project Status
+
+### ✅ Completed (Phase 1)
+- ✅ Project structure (monorepo)
+- ✅ Backend API (NestJS) with full CRUD
+- ✅ Frontend (Next.js) with authentication
+- ✅ Database schema (Prisma)
+- ✅ Multi-tenant architecture
+- ✅ Authentication & Authorization
+- ✅ CRM Core (Contacts, Companies, Pipelines, Deals)
+- ✅ Docker setup
+
+### 🚧 In Progress
+- Frontend pages for CRM modules
+- Telegram integration
+- AI features
+
+### 📋 Next Steps
+See [QUICKSTART.md](./QUICKSTART.md) to get started!
