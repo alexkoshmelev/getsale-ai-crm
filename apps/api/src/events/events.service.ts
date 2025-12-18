@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ModuleRef } from '@nestjs/common';
 import { RedisService } from '../common/redis/redis.service';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { TriggersService } from '../triggers/triggers.service';
+import { CampaignsService } from '../campaigns/campaigns.service';
 
 export enum EventType {
   // Contact events
@@ -23,10 +25,15 @@ export enum EventType {
   CAMPAIGN_PAUSED = 'campaign.paused',
   CAMPAIGN_STOPPED = 'campaign.stopped',
   CAMPAIGN_COMPLETED = 'campaign.completed',
+  CAMPAIGN_REPLY = 'campaign.reply',
 
   // AI events
   AI_AGENT_TRIGGERED = 'ai.agent.triggered',
   AI_DRAFT_GENERATED = 'ai.draft.generated',
+  AI_DRAFT_APPROVED = 'ai.draft.approved',
+
+  // Meeting events
+  MEETING_BOOKED = 'meeting.booked',
 
   // Billing events
   BILLING_SUBSCRIPTION_UPDATED = 'billing.subscription.updated',
@@ -49,6 +56,7 @@ export class EventsService {
   constructor(
     private redis: RedisService,
     private prisma: PrismaService,
+    private moduleRef: ModuleRef,
   ) {}
 
   async publish(eventType: EventType, payload: EventPayload) {
@@ -77,6 +85,42 @@ export class EventsService {
       });
 
       this.logger.debug(`Event published: ${eventType}`, { organizationId: payload.organizationId });
+
+      // Execute triggers asynchronously (don't block event publishing)
+      try {
+        const triggersService = this.moduleRef.get(TriggersService, { strict: false });
+        if (triggersService) {
+          triggersService
+            .executeTriggersForEvent(payload.organizationId, eventType, {
+              entityType: payload.entityType,
+              entityId: payload.entityId,
+              userId: payload.userId,
+              agentId: payload.agentId,
+              ...payload.data,
+            })
+            .catch((error: any) => {
+              this.logger.error(`Failed to execute triggers for event: ${eventType}`, error);
+            });
+        }
+      } catch (error) {
+        // TriggersService not available, skip
+      }
+
+      // Handle campaign reply detection for message.received events
+      if (eventType === EventType.MESSAGE_RECEIVED && payload.data?.contactId && payload.data?.chatId) {
+        try {
+          const campaignsService = this.moduleRef.get(CampaignsService, { strict: false });
+          if (campaignsService) {
+            campaignsService
+              .handleMessageReceived(payload.organizationId, payload.data.contactId, payload.data.chatId)
+              .catch((error: any) => {
+                this.logger.error('Failed to detect campaign reply', error);
+              });
+          }
+        } catch (error) {
+          // CampaignsService not available, skip
+        }
+      }
     } catch (error) {
       this.logger.error(`Failed to publish event: ${eventType}`, error);
       throw error;

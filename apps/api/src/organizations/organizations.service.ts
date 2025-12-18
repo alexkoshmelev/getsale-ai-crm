@@ -3,10 +3,14 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { UsageLimitsService } from '../billing/usage-limits.service';
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private usageLimitsService: UsageLimitsService,
+  ) {}
 
   async create(userId: string, createDto: CreateOrganizationDto) {
     return this.prisma.organization.create({
@@ -107,6 +111,9 @@ export class OrganizationsService {
   async addMember(id: string, userId: string, addMemberDto: AddMemberDto) {
     // Check permissions
     await this.checkPermission(id, userId, ['owner', 'admin']);
+
+    // Check seat limit
+    await this.usageLimitsService.validateSeatLimit(id);
 
     // Check if user exists
     const user = await this.prisma.user.findUnique({

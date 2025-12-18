@@ -28,5 +28,11 @@ export class ChatsController {
   markAsRead(@Param('id') id: string, @OrganizationId() organizationId: string) {
     return this.chatsService.markAsRead(id, organizationId);
   }
+
+  @Get(':id/context')
+  @ApiOperation({ summary: 'Get chat context (contact, deals, etc.)' })
+  getContext(@Param('id') id: string, @OrganizationId() organizationId: string) {
+    return this.chatsService.getContext(id, organizationId);
+  }
 }
 

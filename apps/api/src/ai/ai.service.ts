@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nest
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { EventsService, EventType } from '../events/events.service';
+import { UsageLimitsService } from '../billing/usage-limits.service';
 import axios from 'axios';
 
 interface AIDraftRequest {
@@ -22,12 +23,16 @@ export class AIService {
     private configService: ConfigService,
     private prisma: PrismaService,
     private eventsService: EventsService,
+    private usageLimitsService: UsageLimitsService,
   ) {
     this.openaiApiKey = this.configService.get<string>('OPENAI_API_KEY') || '';
     this.openaiModel = this.configService.get<string>('OPENAI_MODEL') || 'gpt-4';
   }
 
   async generateDraftReply(request: AIDraftRequest): Promise<string> {
+    // Check AI call limit
+    await this.usageLimitsService.validateAICallLimit(request.organizationId);
+
     if (!this.openaiApiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -130,6 +135,9 @@ Generate a reply draft:`;
     organizationId: string,
     input: any,
   ): Promise<any> {
+    // Check AI call limit
+    await this.usageLimitsService.validateAICallLimit(organizationId);
+
     const agent = await this.prisma.aiAgent.findFirst({
       where: {
         id: agentId,

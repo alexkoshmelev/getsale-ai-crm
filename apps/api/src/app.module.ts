@@ -20,8 +20,10 @@ import { EventsModule } from './events/events.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { TriggersModule } from './triggers/triggers.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
@@ -62,6 +64,7 @@ import { RedisModule } from './common/redis/redis.module';
     CampaignsModule,
     WebSocketModule,
     NotificationsModule,
+    TriggersModule,
   ],
 })
 export class AppModule {}

@@ -346,6 +346,10 @@ export class TelegramService implements OnModuleInit {
         },
       });
 
+      // Detect campaign reply
+      // Note: This should be done after message creation, but we need MessagesService
+      // For now, we'll handle it via event subscription or add it to MessagesService
+      
       // Publish event
       await this.eventsService.publish(EventType.MESSAGE_RECEIVED, {
         organizationId: contact.organizationId,

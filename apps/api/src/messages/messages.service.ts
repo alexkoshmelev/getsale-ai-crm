@@ -4,6 +4,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { EventsService, EventType } from '../events/events.service';
 import { WebSocketGateway } from '../websocket/websocket.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsageLimitsService } from '../billing/usage-limits.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
 @Injectable()
@@ -14,9 +15,13 @@ export class MessagesService {
     private eventsService: EventsService,
     private websocketGateway: WebSocketGateway,
     private notificationsService: NotificationsService,
+    private usageLimitsService: UsageLimitsService,
   ) {}
 
   async create(organizationId: string, userId: string, createDto: CreateMessageDto) {
+    // Check message limit
+    await this.usageLimitsService.validateMessageLimit(organizationId);
+
     // Verify chat belongs to organization
     const chat = await this.prisma.chat.findFirst({
       where: {
@@ -113,6 +118,78 @@ export class MessagesService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Detect if incoming message is a reply to a campaign
+   * Called when a message is received
+   */
+  async detectCampaignReply(organizationId: string, contactId: string, chatId: string) {
+    try {
+      // Find active campaign messages for this contact
+      const campaignMessages = await this.prisma.campaignMessage.findMany({
+        where: {
+          contactId,
+          status: { in: ['sent', 'delivered'] },
+          campaign: {
+            organizationId,
+            status: 'active',
+          },
+        },
+        include: {
+          campaign: true,
+        },
+        orderBy: { sentAt: 'desc' },
+        take: 1,
+      });
+
+      if (campaignMessages.length === 0) {
+        return null;
+      }
+
+      const campaignMessage = campaignMessages[0];
+
+      // Mark as replied
+      await this.prisma.campaignMessage.update({
+        where: { id: campaignMessage.id },
+        data: {
+          status: 'replied',
+          repliedAt: new Date(),
+        },
+      });
+
+      // Publish campaign reply event
+      await this.eventsService.publish(EventType.CAMPAIGN_REPLY, {
+        organizationId,
+        entityType: 'campaign_message',
+        entityId: campaignMessage.id,
+        data: {
+          campaignId: campaignMessage.campaignId,
+          contactId,
+          chatId,
+          campaignMessageId: campaignMessage.id,
+        },
+      });
+
+      // Stop campaign sequence for this contact (mark other pending messages as skipped)
+      await this.prisma.campaignMessage.updateMany({
+        where: {
+          campaignId: campaignMessage.campaignId,
+          contactId,
+          status: 'pending',
+        },
+        data: {
+          status: 'skipped',
+        },
+      });
+
+      this.logger.log(`Campaign reply detected: ${campaignMessage.id}`);
+
+      return campaignMessage;
+    } catch (error) {
+      this.logger.error('Failed to detect campaign reply', error);
+      return null;
+    }
   }
 }
 

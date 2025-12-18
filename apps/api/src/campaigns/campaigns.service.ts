@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { EventsService, EventType } from '../events/events.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
@@ -8,7 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis/redis.service';
 
 @Injectable()
-export class CampaignsService {
+export class CampaignsService implements OnModuleInit {
+  private readonly logger = new Logger(CampaignsService.name);
   private campaignQueue: Queue;
 
   constructor(
@@ -21,6 +22,81 @@ export class CampaignsService {
     this.campaignQueue = new Queue('campaigns', {
       connection: this.redis.getClient() as any,
     });
+  }
+
+  async onModuleInit() {
+    // Subscribe to message.received events for campaign reply detection
+    // This will be handled per-organization when they connect
+  }
+
+  /**
+   * Handle message received event to detect campaign replies
+   * Called by event handlers
+   */
+  async handleMessageReceived(organizationId: string, contactId: string, chatId: string) {
+    try {
+      // Find active campaign messages for this contact
+      const campaignMessages = await this.prisma.campaignMessage.findMany({
+        where: {
+          contactId,
+          status: { in: ['sent', 'delivered'] },
+          campaign: {
+            organizationId,
+            status: 'active',
+          },
+        },
+        include: {
+          campaign: true,
+        },
+        orderBy: { sentAt: 'desc' },
+        take: 1,
+      });
+
+      if (campaignMessages.length === 0) {
+        return null;
+      }
+
+      const campaignMessage = campaignMessages[0];
+
+      // Mark as replied
+      await this.prisma.campaignMessage.update({
+        where: { id: campaignMessage.id },
+        data: {
+          status: 'replied',
+          repliedAt: new Date(),
+        },
+      });
+
+      // Publish campaign reply event
+      await this.eventsService.publish(EventType.CAMPAIGN_REPLY, {
+        organizationId,
+        entityType: 'campaign_message',
+        entityId: campaignMessage.id,
+        data: {
+          campaignId: campaignMessage.campaignId,
+          contactId,
+          chatId,
+          campaignMessageId: campaignMessage.id,
+        },
+      });
+
+      // Stop campaign sequence for this contact (mark other pending messages as skipped)
+      await this.prisma.campaignMessage.updateMany({
+        where: {
+          campaignId: campaignMessage.campaignId,
+          contactId,
+          status: 'pending',
+        },
+        data: {
+          status: 'skipped',
+        },
+      });
+
+      return campaignMessage;
+    } catch (error) {
+      this.logger.error('Failed to detect campaign reply', error);
+      return null;
+    }
   }
 
   async create(organizationId: string, createDto: CreateCampaignDto) {
