@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ContactsService } from './contacts.service';
+import { ContactsImportService } from './contacts-import.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,7 +22,10 @@ import { OrganizationId } from '../common/decorators/organization.decorator';
 @UseGuards(JwtAuthGuard)
 @Controller('contacts')
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) {}
+  constructor(
+    private readonly contactsService: ContactsService,
+    private readonly contactsImportService: ContactsImportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new contact' })
@@ -69,6 +73,22 @@ export class ContactsController {
   @ApiOperation({ summary: 'Delete contact' })
   remove(@Param('id') id: string, @OrganizationId() organizationId: string) {
     return this.contactsService.remove(id, organizationId);
+  }
+
+  @Post('import')
+  @ApiOperation({ summary: 'Import contacts from CSV' })
+  async import(
+    @OrganizationId() organizationId: string,
+    @Body('data') csvData: any[],
+    @Body('options') options?: { skipDuplicates?: boolean; validateEmails?: boolean; checkOptOut?: boolean },
+  ) {
+    return this.contactsImportService.importFromCSV(organizationId, csvData, options || {});
+  }
+
+  @Post('deduplicate')
+  @ApiOperation({ summary: 'Deduplicate contacts' })
+  async deduplicate(@OrganizationId() organizationId: string) {
+    return this.contactsImportService.deduplicate(organizationId);
   }
 }
 

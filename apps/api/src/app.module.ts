@@ -21,6 +21,11 @@ import { CampaignsModule } from './campaigns/campaigns.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TriggersModule } from './triggers/triggers.module';
+import { BidiModule } from './bidi/bidi.module';
+import { CampaignGoalsModule } from './campaign-goals/campaign-goals.module';
+import { PoliciesModule } from './policies/policies.module';
+import { TrustSafetyModule } from './trust-safety/trust-safety.module';
+import { SupervisorModule } from './supervisor/supervisor.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { BullModule } from '@nestjs/bullmq';
@@ -65,6 +70,11 @@ import { BullModule } from '@nestjs/bullmq';
     WebSocketModule,
     NotificationsModule,
     TriggersModule,
+    BidiModule,
+    CampaignGoalsModule,
+    PoliciesModule,
+    TrustSafetyModule,
+    SupervisorModule,
   ],
 })
 export class AppModule {}

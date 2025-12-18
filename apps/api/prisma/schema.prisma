@@ -62,11 +62,22 @@ model OrganizationMember {
   id             String   @id @default(uuid())
   organizationId String   @map("organization_id")
   userId         String   @map("user_id")
-  role           String   // owner, admin, bidi, viewer
+  role           String   // owner, admin, bidi, viewer, supervisor
+  bidiType       String?  @map("bidi_type") // internal, external, ai_only
+  ownership      String?  // dedicated, shared
+  isActive       Boolean  @default(true) @map("is_active")
+  targetReplies  Int?     @map("target_replies") // per week
+  targetMeetings Int?     @map("target_meetings") // per month
+  targetRevenue  Decimal? @map("target_revenue") @db.Decimal(10, 2)
+  metadata       Json     @default("{}")
   createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedContacts ContactAssignment[]
+  assignedChats    ChatAssignment[]
+  performanceLogs  BiDiPerformanceLog[]
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -106,6 +117,8 @@ model Company {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contacts     Contact[]
   deals        Deal[]
+  policies     CompanyPolicy[]
+  campaigns    Campaign[]
 
   @@map("companies")
 }
@@ -135,6 +148,8 @@ model Contact {
   chats        Chat[]
   deals        Deal[]
   agentMemories AgentMemory[]
+  assignments  ContactAssignment[]
+  optOuts      ContactOptOut[]
 
   @@map("contacts")
 }
@@ -152,6 +167,7 @@ model Pipeline {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stages       PipelineStage[]
   deals        Deal[]
+  policies     PipelinePolicy[]
 
   @@map("pipelines")
 }
@@ -214,6 +230,7 @@ model Chat {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
   messages     Message[]
+  assignments  ChatAssignment[]
 
   @@unique([organizationId, contactId, channel, channelThreadId])
   @@map("chats")
@@ -332,7 +349,12 @@ model Campaign {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId    String?           @map("company_id")
   messages     CampaignMessage[]
+  sequences    CampaignSequence[]
+  goals        CampaignGoal[]
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   @@map("campaigns")
 }
@@ -342,11 +364,12 @@ model CampaignMessage {
   campaignId  String    @map("campaign_id")
   contactId   String    @map("contact_id")
   messageId   String?   @map("message_id")
-  status      String    // pending, sent, delivered, replied, failed
+  status      String    // pending, sent, delivered, replied, failed, skipped
   sentAt      DateTime? @map("sent_at")
   deliveredAt DateTime? @map("delivered_at")
   repliedAt   DateTime? @map("replied_at")
   errorMessage String?  @map("error_message") @db.Text
+  sequenceStep Int?     @map("sequence_step") // Step number for multistep sequences
   createdAt   DateTime  @default(now()) @map("created_at")
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -541,5 +564,169 @@ model TriggerExecution {
   trigger Trigger @relation(fields: [triggerId], references: [id], onDelete: Cascade)
 
   @@map("trigger_executions")
+}
+
+// BiDi Management
+model ContactAssignment {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  contactId      String   @map("contact_id")
+  bidiId         String   @map("bidi_id") // organizationMemberId
+  assignedAt     DateTime @default(now()) @map("assigned_at")
+  assignedBy     String?  @map("assigned_by")
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  contact Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  bidi    OrganizationMember @relation(fields: [bidiId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, bidiId])
+  @@map("contact_assignments")
+}
+
+model ChatAssignment {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  chatId         String   @map("chat_id")
+  bidiId         String   @map("bidi_id") // organizationMemberId
+  assignedAt     DateTime @default(now()) @map("assigned_at")
+  assignedBy     String?  @map("assigned_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  chat Chat                @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  bidi OrganizationMember  @relation(fields: [bidiId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, bidiId])
+  @@map("chat_assignments")
+}
+
+model BiDiPerformanceLog {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  bidiId         String   @map("bidi_id")
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  metrics        Json     // { messagesSent, replies, meetings, deals, revenue }
+  targets        Json     // { targetReplies, targetMeetings, targetRevenue }
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  bidi OrganizationMember @relation(fields: [bidiId], references: [id], onDelete: Cascade)
+
+  @@unique([bidiId, periodStart])
+  @@map("bidi_performance_logs")
+}
+
+// Campaign Goals & Policies
+model CampaignGoal {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  campaignId     String   @map("campaign_id")
+  goalType       String   @map("goal_type") // replies_target, meetings_target, opens_target, clicks_target
+  targetValue    Decimal  @map("target_value") @db.Decimal(12, 2)
+  currentValue   Decimal  @default(0) @map("current_value") @db.Decimal(12, 2)
+  period         String?  // month, week, quarter, year (optional for campaign duration)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_goals")
+}
+
+model CompanyPolicy {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  companyId      String?  @map("company_id")
+  policyType     String   @map("policy_type") // sla, escalation, action_on_reply
+  rules          Json     // policy rules configuration
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_policies")
+}
+
+// Pipeline Policies
+model PipelinePolicy {
+  id             String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  pipelineId     String  @map("pipeline_id")
+  policyType     String  @map("policy_type") // auto_transition, stage_entry_action, stage_exit_action
+  triggerEvent   String? @map("trigger_event")
+  conditions     Json    @default("{}")
+  actions        Json    // actions to execute
+  isActive       Boolean @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@map("pipeline_policies")
+}
+
+// Trust & Safety
+model ContactOptOut {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  contactId      String?  @map("contact_id")
+  email          String?
+  phone          String?
+  reason         String?  @db.Text
+  source         String?  // manual, automated, complaint
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, phone])
+  @@map("contact_opt_outs")
+}
+
+model ContactBlacklist {
+  id             String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  email          String?
+  phone          String?
+  domain         String?
+  reason         String?  @db.Text
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("contact_blacklists")
+}
+
+model MessageThrottle {
+  id             String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  contactId      String? @map("contact_id")
+  channel        String   // telegram, email, etc
+  lastSentAt     DateTime @map("last_sent_at")
+  messageCount   Int      @default(0) @map("message_count")
+  windowStart    DateTime @map("window_start")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([organizationId, contactId, channel])
+  @@map("message_throttles")
+}
+
+// Campaign Sequences (Multistep)
+model CampaignSequence {
+  id             String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  campaignId     String  @map("campaign_id")
+  stepNumber     Int      @map("step_number")
+  delayDays      Int      @default(0) @map("delay_days")
+  delayHours     Int      @default(0) @map("delay_hours")
+  template       String   @db.Text
+  conditions     Json     @default("{}") // when to send this step
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_sequences")
 }
 

@@ -5,6 +5,7 @@ import { EventsService, EventType } from '../events/events.service';
 import { WebSocketGateway } from '../websocket/websocket.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsageLimitsService } from '../billing/usage-limits.service';
+import { TrustSafetyService } from '../trust-safety/trust-safety.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class MessagesService {
     private websocketGateway: WebSocketGateway,
     private notificationsService: NotificationsService,
     private usageLimitsService: UsageLimitsService,
+    private trustSafetyService: TrustSafetyService,
   ) {}
 
   async create(organizationId: string, userId: string, createDto: CreateMessageDto) {
@@ -28,11 +30,23 @@ export class MessagesService {
         id: createDto.chatId,
         organizationId,
       },
+      include: {
+        contact: true,
+      },
     });
 
     if (!chat) {
       throw new NotFoundException('Chat not found');
     }
+
+    // Validate trust & safety (opt-out, blacklist, throttling)
+    await this.trustSafetyService.validateMessageSend(
+      organizationId,
+      chat.contactId,
+      chat.channel,
+      chat.contact.email || undefined,
+      chat.contact.phone || undefined,
+    );
 
     const message = await this.prisma.message.create({
       data: {

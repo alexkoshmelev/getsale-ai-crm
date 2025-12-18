@@ -7,6 +7,7 @@ import { EventsModule } from '../events/events.module';
 import { WebSocketModule } from '../websocket/websocket.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BillingModule } from '../billing/billing.module';
+import { TrustSafetyModule } from '../trust-safety/trust-safety.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { BillingModule } from '../billing/billing.module';
     WebSocketModule,
     NotificationsModule,
     BillingModule,
+    TrustSafetyModule,
   ],
   controllers: [MessagesController],
   providers: [MessagesService],

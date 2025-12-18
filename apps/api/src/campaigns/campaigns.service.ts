@@ -184,24 +184,59 @@ export class CampaignsService implements OnModuleInit {
     // Get target contacts
     const contacts = await this.getTargetContacts(organizationId, campaign.targetAudience as any);
 
+    // Check if campaign has sequences
+    const sequences = await this.prisma.campaignSequence.findMany({
+      where: {
+        campaignId: campaign.id,
+        stepNumber: 1,
+        isActive: true,
+      },
+    });
+
     // Add jobs to queue
     for (const contact of contacts) {
-      await this.campaignQueue.add(
-        'send-campaign-message',
-        {
-          campaignId: campaign.id,
-          contactId: contact.id,
-          organizationId,
-          messageTemplate: campaign.messageTemplate,
-        },
-        {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
+      if (sequences.length > 0) {
+        // Use first sequence step
+        const firstSequence = sequences[0];
+        await this.campaignQueue.add(
+          'send-campaign-sequence',
+          {
+            campaignId: campaign.id,
+            contactId: contact.id,
+            organizationId,
+            sequenceId: firstSequence.id,
+            messageTemplate: firstSequence.template,
+            stepNumber: firstSequence.stepNumber,
           },
-        },
-      );
+          {
+            jobId: `campaign-${campaign.id}-contact-${contact.id}-step-${firstSequence.stepNumber}`,
+            delay: (firstSequence.delayDays * 24 * 60 * 60 * 1000) + (firstSequence.delayHours * 60 * 60 * 1000),
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
+          },
+        );
+      } else {
+        // Use regular campaign template
+        await this.campaignQueue.add(
+          'send-campaign-message',
+          {
+            campaignId: campaign.id,
+            contactId: contact.id,
+            organizationId,
+            messageTemplate: campaign.messageTemplate,
+          },
+          {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
+          },
+        );
+      }
     }
 
     await this.eventsService.publish(EventType.CAMPAIGN_STARTED, {

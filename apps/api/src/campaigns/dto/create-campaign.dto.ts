@@ -11,6 +11,11 @@ export class CreateCampaignDto {
   @IsString()
   description?: string;
 
+  @ApiProperty({ required: false, description: 'Company ID to link campaign to company goals' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
   @ApiProperty({
     example: {
       tags: ['prospect'],
